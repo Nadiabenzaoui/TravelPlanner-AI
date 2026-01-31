@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { motion, useScroll, useTransform } from "framer-motion";
-import { useRef, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Search } from "lucide-react";
+import { ArrowRight, Search, User, LogOut } from "lucide-react";
+import { GoogleMapsAutocomplete } from "@/components/maps/GoogleMapsAutocomplete";
+import { supabase } from "@/lib/supabase";
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -19,11 +21,38 @@ export default function Home() {
   const searchY = useTransform(scrollYProgress, [0, 0.4], [0, -80]);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [user, setUser] = useState<any>(null);
   const router = useRouter();
+
+  useEffect(() => {
+    const checkUser = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      setUser(user);
+    };
+    checkUser();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user ?? null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
 
   const handlePlanTrip = () => {
     if (!searchQuery.trim()) return;
     router.push(`/planner?destination=${encodeURIComponent(searchQuery)}`);
+  };
+
+  const handlePlaceSelect = (place: google.maps.places.PlaceResult | null) => {
+    if (place?.name || place?.formatted_address) {
+      setSearchQuery(place.name || place.formatted_address || "");
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    router.refresh();
   };
 
   return (
@@ -36,16 +65,26 @@ export default function Home() {
         className="fixed top-0 w-full z-50 px-8 py-6 flex justify-between items-center bg-white/80 backdrop-blur-md border-b border-border/50"
       >
         <div className="flex gap-12 items-center">
-          <span className="text-2xl font-black tracking-tighter uppercase italic">TravelAI.</span>
+          <Link href="/" className="text-2xl font-black tracking-tighter uppercase italic">TravelAI.</Link>
           <div className="hidden md:flex items-center gap-8 text-[11px] font-black uppercase tracking-[0.2em] text-text-secondary">
-            <Link href="#" className="hover:text-foreground transition-all duration-300">Produce</Link>
-            <Link href="#" className="hover:text-foreground transition-all duration-300">About Us</Link>
-            <Link href="#" className="hover:text-foreground transition-all duration-300">Recipes</Link>
+            {user && (
+              <Link href="/trips" className="hover:text-foreground transition-all duration-300">My Trips</Link>
+            )}
+            <Link href="#" className="hover:text-foreground transition-all duration-300">Destinations</Link>
           </div>
         </div>
         <div className="flex items-center gap-8 text-[11px] font-black uppercase tracking-[0.2em]">
-          <Link href="#" className="hidden md:block text-text-secondary hover:text-foreground transition-all duration-300">Stories</Link>
-          <Link href="#" className="hidden md:block text-text-secondary hover:text-foreground transition-all duration-300">Join Us</Link>
+          {!user ? (
+            <>
+              <Link href="/login" className="text-text-secondary hover:text-foreground transition-all duration-300">Login</Link>
+              <Link href="/signup" className="text-text-secondary hover:text-foreground transition-all duration-300">Join Us</Link>
+            </>
+          ) : (
+            <button onClick={handleLogout} className="flex items-center gap-2 text-text-secondary hover:text-red-500 transition-all duration-300">
+              <LogOut className="w-4 h-4" />
+              Sign Out
+            </button>
+          )}
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
@@ -86,11 +125,8 @@ export default function Home() {
           <div className="w-full max-w-2xl bg-white/70 backdrop-blur-2xl rounded-2xl border border-white/50 shadow-[0_32px_64px_-16px_rgba(0,0,0,0.1)] p-2 flex items-center gap-2 group focus-within:border-black/20 focus-within:bg-white/90 transition-all duration-500">
             <div className="flex-1 flex items-center gap-4 px-4">
               <Search className="w-5 h-5 text-text-secondary" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && handlePlanTrip()}
+              <GoogleMapsAutocomplete
+                onPlaceSelect={handlePlaceSelect}
                 placeholder="Where to next? (e.g. Paris, Tokyo, Bali...)"
                 className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-lg font-bold placeholder:text-text-secondary/50 placeholder:font-medium text-foreground py-4"
               />
@@ -144,3 +180,4 @@ export default function Home() {
     </main>
   );
 }
+

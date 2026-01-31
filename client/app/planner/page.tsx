@@ -5,11 +5,14 @@ import { useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Calendar, MapPin, Clock, Info, ChevronRight, Sparkles } from "lucide-react";
 import Link from "next/link";
+import { ItineraryMap } from "@/components/maps/ItineraryMap";
 
 interface Activity {
     time: string;
     activity: string;
     location: string;
+    lat: number;
+    lng: number;
 }
 
 interface Day {
@@ -92,60 +95,70 @@ function PlannerContent() {
     }
 
     return (
-        <div className="max-w-5xl mx-auto px-6 py-32">
+        <div className="max-w-[1400px] mx-auto px-6 py-32">
             <motion.header
                 initial={{ y: 20, opacity: 0 }}
                 animate={{ y: 0, opacity: 1 }}
-                className="mb-24 text-center"
+                className="mb-24"
             >
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface border border-border mb-8">
                     <MapPin className="w-4 h-4 text-text-secondary" />
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-secondary">{itinerary.destination}</span>
                 </div>
-                <h1 className="text-7xl md:text-8xl font-black tracking-tighter uppercase leading-[0.8] mb-8">
+                <h1 className="text-7xl md:text-9xl font-black tracking-tighter uppercase leading-[0.8] mb-8">
                     {itinerary.tripTitle}
                 </h1>
             </motion.header>
 
-            <div className="grid gap-24">
-                {itinerary.days.map((day, dayIdx) => (
-                    <motion.section
-                        key={day.dayNumber}
-                        initial={{ opacity: 0, y: 30 }}
-                        whileInView={{ opacity: 1, y: 0 }}
-                        viewport={{ once: true }}
-                        transition={{ delay: 0.2 }}
-                        className="relative"
-                    >
-                        <div className="flex flex-col md:flex-row gap-12">
-                            <div className="md:w-1/4">
-                                <div className="sticky top-32">
-                                    <span className="text-9xl font-black tracking-tighter opacity-5 block leading-none mb-4">
-                                        0{day.dayNumber}
-                                    </span>
-                                    <h3 className="text-xl font-black uppercase tracking-tight leading-tight">
-                                        {day.theme}
-                                    </h3>
+            <div className="flex flex-col lg:flex-row gap-24">
+                {/* Left Side: Itinerary */}
+                <div className="lg:w-3/5 grid gap-24">
+                    {itinerary.days.map((day, dayIdx) => (
+                        <motion.section
+                            key={day.dayNumber}
+                            initial={{ opacity: 0, y: 30 }}
+                            whileInView={{ opacity: 1, y: 0 }}
+                            viewport={{ once: true }}
+                            transition={{ delay: 0.2 }}
+                            className="relative"
+                        >
+                            <div className="flex flex-col md:flex-row gap-12">
+                                <div className="md:w-1/4">
+                                    <div className="sticky top-32">
+                                        <span className="text-8xl font-black tracking-tighter opacity-5 block leading-none mb-4">
+                                            0{day.dayNumber}
+                                        </span>
+                                        <h3 className="text-xl font-black uppercase tracking-tight leading-tight">
+                                            {day.theme}
+                                        </h3>
+                                    </div>
+                                </div>
+
+                                <div className="md:w-3/4 space-y-12">
+                                    {day.activities.map((activity, actIdx) => (
+                                        <div key={actIdx} className="group relative pl-8 border-l border-border hover:border-black transition-colors">
+                                            <div className="absolute -left-[5px] top-0 w-[9px] h-[9px] rounded-full bg-border group-hover:bg-black transition-colors" />
+                                            <div className="flex items-center gap-4 text-[10px] font-black tracking-[0.2em] text-text-secondary uppercase mb-2">
+                                                <Clock className="w-3 h-3" />
+                                                <span>{activity.time}</span>
+                                                <span className="opacity-20">—</span>
+                                                <span>{activity.location}</span>
+                                            </div>
+                                            <h4 className="text-2xl font-bold tracking-tight mb-2">{activity.activity}</h4>
+                                        </div>
+                                    ))}
                                 </div>
                             </div>
+                        </motion.section>
+                    ))}
+                </div>
 
-                            <div className="md:w-3/4 space-y-12">
-                                {day.activities.map((activity, actIdx) => (
-                                    <div key={actIdx} className="group relative pl-8 border-l border-border hover:border-black transition-colors">
-                                        <div className="absolute -left-[5px] top-0 w-[9px] h-[9px] rounded-full bg-border group-hover:bg-black transition-colors" />
-                                        <div className="flex items-center gap-4 text-[10px] font-black tracking-[0.2em] text-text-secondary uppercase mb-2">
-                                            <Clock className="w-3 h-3" />
-                                            <span>{activity.time}</span>
-                                            <span className="opacity-20">—</span>
-                                            <span>{activity.location}</span>
-                                        </div>
-                                        <h4 className="text-2xl font-bold tracking-tight mb-2">{activity.activity}</h4>
-                                    </div>
-                                ))}
-                            </div>
-                        </div>
-                    </motion.section>
-                ))}
+                {/* Right Side: Sticky Map */}
+                <div className="lg:w-2/5">
+                    <div className="sticky top-32 lg:h-[calc(100vh-200px)]">
+                        <ItineraryMap itinerary={itinerary} />
+                    </div>
+                </div>
             </div>
 
             <motion.section
@@ -169,8 +182,11 @@ function PlannerContent() {
                 </ul>
             </motion.section>
 
-            <div className="mt-24 text-center">
-                <Link href="/" className="inline-flex items-center gap-4 text-[11px] font-black uppercase tracking-[0.3em] hover:gap-6 transition-all group">
+            <div className="mt-24 flex flex-col items-center gap-6">
+                <Link href="/trips" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all active:scale-95 shadow-xl shadow-black/10">
+                    View Saved Trips
+                </Link>
+                <Link href="/" className="inline-flex items-center gap-4 text-[11px] font-black uppercase tracking-[0.3em] hover:gap-6 transition-all group opacity-60 hover:opacity-100">
                     Plan another escape
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                 </Link>

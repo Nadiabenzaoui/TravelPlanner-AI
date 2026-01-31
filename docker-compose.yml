@@ -1,12 +1,26 @@
 services:
-  app:
+  client:
     build:
-      context: .
+      context: ./client
       dockerfile: Dockerfile
     ports:
       - "3000:3000"
     env_file:
-      - .env
+      - ./client/.env
+    environment:
+      - NODE_ENV=production
+    depends_on:
+      - server
+    restart: always
+
+  server:
+    build:
+      context: ./server
+      dockerfile: Dockerfile
+    ports:
+      - "4000:4000"
+    env_file:
+      - ./server/.env
     environment:
       - NODE_ENV=production
     restart: always
