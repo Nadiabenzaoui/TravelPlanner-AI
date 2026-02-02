@@ -1,38 +1,36 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
 import { supabase } from "../lib/supabase.js";
+import { verifyToken, AuthenticatedRequest, ApiError, asyncHandler } from "../middleware/index.js";
 
 const router = Router();
 
-// GET - Récupérer le profil utilisateur
-router.get("/", async (req: Request, res: Response) => {
-    try {
-        const userId = req.headers["x-user-id"] as string;
-        const userEmail = req.headers["x-user-email"] as string;
+// All routes require authentication
+router.use(verifyToken);
 
-        if (!userId) {
-            res.status(401).json({ error: "Non authentifié" });
-            return;
-        }
+// GET - Fetch user profile
+router.get("/", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user!.id;
+    const userEmail = req.user!.email;
 
-        // Compter les trips de l'utilisateur
-        const { count } = await supabase
-            .from("trips")
-            .select("*", { count: "exact", head: true })
-            .eq("user_id", userId);
+    const { count, error } = await supabase
+        .from("trips")
+        .select("*", { count: "exact", head: true })
+        .eq("user_id", userId);
 
-        res.json({
-            user: {
-                id: userId,
-                email: userEmail,
-            },
-            stats: {
-                trips_count: count || 0,
-            },
-        });
-    } catch (error: any) {
-        console.error("Server error:", error);
-        res.status(500).json({ error: "Erreur serveur" });
+    if (error) {
+        console.error("Error fetching profile:", error);
+        throw ApiError.internal("Failed to fetch profile");
     }
-});
+
+    res.json({
+        user: {
+            id: userId,
+            email: userEmail,
+        },
+        stats: {
+            trips_count: count || 0,
+        },
+    });
+}));
 
 export default router;

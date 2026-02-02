@@ -1,53 +1,44 @@
-import { Router, Request, Response } from "express";
+import { Router, Response } from "express";
 import { supabase } from "../lib/supabase.js";
+import {
+    verifyToken,
+    validateBody,
+    AuthenticatedRequest,
+    ApiError,
+    asyncHandler,
+} from "../middleware/index.js";
+import { createTripSchema, deleteTripSchema } from "../schemas/index.js";
 
 const router = Router();
 
-// GET - Récupérer tous les trips d'un utilisateur
-router.get("/", async (req: Request, res: Response) => {
-    try {
-        const userId = req.headers["x-user-id"] as string;
+// All routes require authentication
+router.use(verifyToken);
 
-        if (!userId) {
-            res.status(401).json({ error: "Non authentifié" });
-            return;
-        }
+// GET - Fetch all trips for authenticated user
+router.get("/", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user!.id;
 
-        const { data: trips, error } = await supabase
-            .from("trips")
-            .select("*")
-            .eq("user_id", userId)
-            .order("created_at", { ascending: false });
+    const { data: trips, error } = await supabase
+        .from("trips")
+        .select("*")
+        .eq("user_id", userId)
+        .order("created_at", { ascending: false });
 
-        if (error) {
-            console.error("Error fetching trips:", error);
-            res.status(500).json({ error: "Erreur lors de la récupération" });
-            return;
-        }
-
-        res.json({ trips });
-    } catch (error: any) {
-        console.error("Server error:", error);
-        res.status(500).json({ error: "Erreur serveur" });
+    if (error) {
+        console.error("Error fetching trips:", error);
+        throw ApiError.internal("Failed to fetch trips");
     }
-});
 
-// POST - Sauvegarder un nouveau trip
-router.post("/", async (req: Request, res: Response) => {
-    try {
-        const userId = req.headers["x-user-id"] as string;
+    res.json({ trips });
+}));
 
-        if (!userId) {
-            res.status(401).json({ error: "Non authentifié" });
-            return;
-        }
-
+// POST - Save a new trip
+router.post(
+    "/",
+    validateBody(createTripSchema),
+    asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+        const userId = req.user!.id;
         const { destination, title, itinerary } = req.body;
-
-        if (!destination || !title || !itinerary) {
-            res.status(400).json({ error: "Destination, title et itinerary requis" });
-            return;
-        }
 
         const { data, error } = await supabase
             .from("trips")
@@ -62,33 +53,20 @@ router.post("/", async (req: Request, res: Response) => {
 
         if (error) {
             console.error("Error saving trip:", error);
-            res.status(500).json({ error: "Erreur lors de la sauvegarde" });
-            return;
+            throw ApiError.internal("Failed to save trip");
         }
 
         res.status(201).json({ trip: data });
-    } catch (error: any) {
-        console.error("Server error:", error);
-        res.status(500).json({ error: "Erreur serveur" });
-    }
-});
+    })
+);
 
-// DELETE - Supprimer un trip
-router.delete("/", async (req: Request, res: Response) => {
-    try {
-        const userId = req.headers["x-user-id"] as string;
-
-        if (!userId) {
-            res.status(401).json({ error: "Non authentifié" });
-            return;
-        }
-
+// DELETE - Remove a trip
+router.delete(
+    "/",
+    validateBody(deleteTripSchema),
+    asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+        const userId = req.user!.id;
         const { id } = req.body;
-
-        if (!id) {
-            res.status(400).json({ error: "ID requis" });
-            return;
-        }
 
         const { error } = await supabase
             .from("trips")
@@ -98,15 +76,11 @@ router.delete("/", async (req: Request, res: Response) => {
 
         if (error) {
             console.error("Error deleting trip:", error);
-            res.status(500).json({ error: "Erreur lors de la suppression" });
-            return;
+            throw ApiError.internal("Failed to delete trip");
         }
 
         res.json({ success: true });
-    } catch (error: any) {
-        console.error("Server error:", error);
-        res.status(500).json({ error: "Erreur serveur" });
-    }
-});
+    })
+);
 
 export default router;

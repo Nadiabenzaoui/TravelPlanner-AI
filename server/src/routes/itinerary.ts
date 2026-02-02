@@ -1,34 +1,34 @@
 import { Router, Request, Response } from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { validateBody, aiLimiter, ApiError, asyncHandler } from "../middleware/index.js";
+import { generateItinerarySchema } from "../schemas/index.js";
 
 const router = Router();
 
-router.post("/generate", async (req: Request, res: Response) => {
-    const apiKey = process.env.GEMINI_API_KEY || "";
+// Apply rate limiting to AI endpoint
+router.use(aiLimiter);
 
-    try {
+router.post(
+    "/generate",
+    validateBody(generateItinerarySchema),
+    asyncHandler(async (req: Request, res: Response) => {
+        const apiKey = process.env.GEMINI_API_KEY;
+
         if (!apiKey) {
-            console.error("CRITICAL: GEMINI_API_KEY is missing.");
-            res.status(500).json({ error: "API Key missing in .env" });
-            return;
+            throw ApiError.internal("AI service not configured", "AI_CONFIG_ERROR");
         }
 
         const { destination, preferences } = req.body;
 
-        if (!destination) {
-            res.status(400).json({ error: "Destination is required" });
-            return;
-        }
-
         const genAI = new GoogleGenerativeAI(apiKey);
 
+        // Models ordered by preference (faster/cheaper first)
         const modelsToTry = [
-            "gemini-flash-latest",
-            "gemini-pro-latest",
-            "gemini-2.0-flash"
+            "gemini-2.0-flash",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-pro-latest",
+            "gemini-pro",
         ];
-        let lastError: any = null;
-
         for (const modelName of modelsToTry) {
             try {
                 console.log(`Attempting generation with model: ${modelName}`);
@@ -64,28 +64,23 @@ router.post("/generate", async (req: Request, res: Response) => {
                 `;
 
                 const result = await model.generateContent(prompt);
-                const response = await result.response;
+                const response = result.response;
                 const text = response.text();
                 const jsonText = text.replace(/```json|```/g, "").trim();
                 const itinerary = JSON.parse(jsonText);
 
                 res.json(itinerary);
                 return;
-            } catch (err: any) {
-                console.error(`Model ${modelName} failed:`, err.message);
-                lastError = err;
+            } catch (err) {
+                console.error(`Model ${modelName} failed:`, (err as Error).message);
             }
         }
 
-        res.status(500).json({
-            error: "All AI models failed to respond.",
-            details: lastError?.message || "Unknown error",
-            hint: "Check if your API Key is active and has Gemini API enabled in Google AI Studio."
-        });
-    } catch (error: any) {
-        console.error("Global Route Error:", error);
-        res.status(500).json({ error: "Server error", details: error.message });
-    }
-});
+        throw ApiError.internal(
+            "All AI models failed to respond",
+            "AI_GENERATION_ERROR"
+        );
+    })
+);
 
 export default router;
