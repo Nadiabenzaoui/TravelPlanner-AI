@@ -1,6 +1,5 @@
 import { Router, Request, Response } from "express";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import { supabase } from "../lib/supabase.js";
 
 const router = Router();
 
@@ -14,7 +13,7 @@ router.post("/generate", async (req: Request, res: Response) => {
             return;
         }
 
-        const { destination, preferences, userId } = req.body;
+        const { destination, preferences } = req.body;
 
         if (!destination) {
             res.status(400).json({ error: "Destination is required" });
@@ -69,23 +68,6 @@ router.post("/generate", async (req: Request, res: Response) => {
                 const text = response.text();
                 const jsonText = text.replace(/```json|```/g, "").trim();
                 const itinerary = JSON.parse(jsonText);
-
-                // Sauvegarder dans Supabase
-                try {
-                    const { error: dbError } = await supabase.from("trips").insert([{
-                        destination: itinerary.destination,
-                        title: itinerary.tripTitle,
-                        itinerary: itinerary,
-                        preferences: preferences || "None",
-                        user_id: userId || null,
-                    }]);
-
-                    if (dbError) {
-                        console.error("DB Save failed:", dbError);
-                    }
-                } catch (e) {
-                    console.error("DB Save failed", e);
-                }
 
                 res.json(itinerary);
                 return;

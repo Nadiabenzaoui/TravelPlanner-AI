@@ -1,12 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { motion, useScroll, useTransform } from "framer-motion";
+import { motion, useScroll, useTransform, AnimatePresence } from "framer-motion";
 import { useRef, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Search, User, LogOut } from "lucide-react";
+import { ArrowRight, Search, LogOut, Plane } from "lucide-react";
 import { GoogleMapsAutocomplete } from "@/components/maps/GoogleMapsAutocomplete";
-import { supabase } from "@/lib/supabase";
+import { createClient } from "@/lib/supabase/client";
 
 export default function Home() {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -21,17 +21,25 @@ export default function Home() {
   const searchY = useTransform(scrollYProgress, [0, 0.4], [0, -80]);
 
   const [searchQuery, setSearchQuery] = useState("");
-  const [user, setUser] = useState<any>(null);
+  const [user, setUser] = useState<any>(undefined); // undefined = loading, null = not logged in
+  const [loggingOut, setLoggingOut] = useState(false);
   const router = useRouter();
+  const supabase = createClient();
 
   useEffect(() => {
+
     const checkUser = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      setUser(user);
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        setUser(user);
+      } catch (error) {
+        console.error("Error checking user:", error);
+        setUser(null);
+      }
     };
     checkUser();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event: string, session: any) => {
       setUser(session?.user ?? null);
     });
 
@@ -43,20 +51,66 @@ export default function Home() {
     router.push(`/planner?destination=${encodeURIComponent(searchQuery)}`);
   };
 
-  const handlePlaceSelect = (place: google.maps.places.PlaceResult | null) => {
+  const handlePlaceSelect = (place: { name?: string; formatted_address?: string } | null) => {
     if (place?.name || place?.formatted_address) {
       setSearchQuery(place.name || place.formatted_address || "");
     }
   };
 
   const handleLogout = async () => {
+    setLoggingOut(true);
     await supabase.auth.signOut();
-    setUser(null);
-    router.refresh();
+    setTimeout(() => {
+      setUser(null);
+      setLoggingOut(false);
+      router.refresh();
+    }, 1500);
   };
 
   return (
     <main ref={containerRef} className="relative min-h-screen bg-background font-sans text-foreground flex flex-col items-center overflow-x-hidden noise">
+      {/* Logout Overlay */}
+      <AnimatePresence>
+        {loggingOut && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black flex flex-col items-center justify-center"
+          >
+            <motion.div
+              initial={{ scale: 0.8, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ delay: 0.2, duration: 0.5 }}
+              className="text-center"
+            >
+              <motion.div
+                animate={{ x: [0, 100, 200], y: [0, -20, 0] }}
+                transition={{ duration: 1.5, ease: "easeInOut" }}
+              >
+                <Plane className="w-12 h-12 text-white mb-6 mx-auto" />
+              </motion.div>
+              <motion.h2
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.4 }}
+                className="text-4xl font-black text-white uppercase tracking-tight"
+              >
+                See you soon!
+              </motion.h2>
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 0.6 }}
+                transition={{ delay: 0.6 }}
+                className="text-white mt-2"
+              >
+                Safe travels...
+              </motion.p>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Navigation */}
       <motion.nav
         initial={{ y: -100, opacity: 0 }}
@@ -74,7 +128,7 @@ export default function Home() {
           </div>
         </div>
         <div className="flex items-center gap-8 text-[11px] font-black uppercase tracking-[0.2em]">
-          {!user ? (
+          {user === undefined ? null : !user ? (
             <>
               <Link href="/login" className="text-text-secondary hover:text-foreground transition-all duration-300">Login</Link>
               <Link href="/signup" className="text-text-secondary hover:text-foreground transition-all duration-300">Join Us</Link>
@@ -127,6 +181,7 @@ export default function Home() {
               <Search className="w-5 h-5 text-text-secondary" />
               <GoogleMapsAutocomplete
                 onPlaceSelect={handlePlaceSelect}
+                onChange={setSearchQuery}
                 placeholder="Where to next? (e.g. Paris, Tokyo, Bali...)"
                 className="w-full bg-transparent border-none focus:ring-0 focus:outline-none text-lg font-bold placeholder:text-text-secondary/50 placeholder:font-medium text-foreground py-4"
               />

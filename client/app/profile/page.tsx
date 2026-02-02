@@ -3,8 +3,9 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { User, Mail, Calendar, MapPin, LogOut, Loader2, ArrowLeft } from "lucide-react";
-import { motion } from "framer-motion";
+import { User, Mail, Calendar, MapPin, LogOut, Loader2, ArrowLeft, Plane } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { createClient } from "@/lib/supabase/client";
 
 interface Profile {
     user: {
@@ -23,6 +24,7 @@ export default function ProfilePage() {
     const [loading, setLoading] = useState(true);
     const [loggingOut, setLoggingOut] = useState(false);
     const router = useRouter();
+    const supabase = createClient();
 
     useEffect(() => {
         fetchProfile();
@@ -30,7 +32,7 @@ export default function ProfilePage() {
 
     const fetchProfile = async () => {
         try {
-            const res = await fetch("/api/profile");
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/profile`);
             if (res.ok) {
                 const data = await res.json();
                 setProfile(data);
@@ -45,13 +47,14 @@ export default function ProfilePage() {
     const handleLogout = async () => {
         setLoggingOut(true);
         try {
-            await fetch("/api/profile", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ action: "logout" }),
-            });
-            router.push("/login");
-            router.refresh();
+            // Déconnexion Supabase - nettoie les cookies et la session
+            await supabase.auth.signOut();
+
+            // Attendre la fin de l'animation avant de rediriger
+            setTimeout(() => {
+                router.push("/login");
+                router.refresh();
+            }, 1500);
         } catch (error) {
             console.error("Error logging out:", error);
             setLoggingOut(false);
@@ -83,7 +86,49 @@ export default function ProfilePage() {
     }
 
     return (
-        <main className="min-h-screen bg-background noise p-6 md:p-16">
+        <main className="min-h-screen bg-background noise p-6 md:p-16 relative">
+            {/* Overlay de déconnexion */}
+            <AnimatePresence>
+                {loggingOut && (
+                    <motion.div
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        exit={{ opacity: 0 }}
+                        className="fixed inset-0 z-50 bg-black flex flex-col items-center justify-center"
+                    >
+                        <motion.div
+                            initial={{ scale: 0.8, opacity: 0 }}
+                            animate={{ scale: 1, opacity: 1 }}
+                            transition={{ delay: 0.2, duration: 0.5 }}
+                            className="text-center"
+                        >
+                            <motion.div
+                                animate={{ x: [0, 100, 200], y: [0, -20, 0] }}
+                                transition={{ duration: 1.5, ease: "easeInOut" }}
+                            >
+                                <Plane className="w-12 h-12 text-white mb-6 mx-auto" />
+                            </motion.div>
+                            <motion.h2
+                                initial={{ opacity: 0, y: 20 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={{ delay: 0.4 }}
+                                className="text-4xl font-black text-white uppercase tracking-tight"
+                            >
+                                À bientôt !
+                            </motion.h2>
+                            <motion.p
+                                initial={{ opacity: 0 }}
+                                animate={{ opacity: 0.6 }}
+                                transition={{ delay: 0.6 }}
+                                className="text-white mt-2"
+                            >
+                                Bon voyage...
+                            </motion.p>
+                        </motion.div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
+
             <div className="max-w-2xl mx-auto">
                 <div className="flex items-center gap-4 mb-12">
                     <Link

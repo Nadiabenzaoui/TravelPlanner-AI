@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { MapPin, Calendar, ArrowRight, Trash2, Loader2 } from "lucide-react";
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/client";
 
 interface Trip {
     id: string;
@@ -17,15 +18,30 @@ export default function TripsPage() {
     const [trips, setTrips] = useState<Trip[]>([]);
     const [loading, setLoading] = useState(true);
     const [deleting, setDeleting] = useState<string | null>(null);
+    const [user, setUser] = useState<any>(null);
+    const supabase = createClient();
 
     useEffect(() => {
-        fetchTrips();
+        const checkUserAndFetchTrips = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            setUser(user);
+            if (user) {
+                fetchTrips(user.id);
+            } else {
+                setLoading(false);
+            }
+        };
+        checkUserAndFetchTrips();
     }, []);
 
-    const fetchTrips = async () => {
+    const fetchTrips = async (userId: string) => {
         setLoading(true);
         try {
-            const res = await fetch("/api/trips");
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips`, {
+                headers: {
+                    "x-user-id": userId,
+                },
+            });
             const data = await res.json();
             if (data.trips) {
                 setTrips(data.trips);
@@ -39,12 +55,16 @@ export default function TripsPage() {
 
     const deleteTrip = async (id: string) => {
         if (!confirm("Supprimer ce voyage ?")) return;
+        if (!user) return;
 
         setDeleting(id);
         try {
-            const res = await fetch("/api/trips", {
+            const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips`, {
                 method: "DELETE",
-                headers: { "Content-Type": "application/json" },
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-user-id": user.id,
+                },
                 body: JSON.stringify({ id }),
             });
             if (res.ok) {
@@ -62,6 +82,32 @@ export default function TripsPage() {
             <div className="min-h-screen bg-background flex items-center justify-center">
                 <div className="w-12 h-12 border-4 border-black border-t-transparent rounded-full animate-spin" />
             </div>
+        );
+    }
+
+    if (!user) {
+        return (
+            <main className="min-h-screen bg-background font-sans text-foreground noise p-8 md:p-16">
+                <header className="max-w-7xl mx-auto mb-24">
+                    <Link href="/" className="text-sm font-black uppercase tracking-[0.3em] opacity-40 hover:opacity-100 transition-all mb-4 block">
+                        ← Back Home
+                    </Link>
+                    <h1 className="text-7xl font-black tracking-tighter uppercase leading-none">
+                        Saved <br /> Escapees.
+                    </h1>
+                </header>
+                <div className="max-w-7xl mx-auto">
+                    <div className="py-32 text-center border-2 border-dashed border-border rounded-3xl">
+                        <p className="text-text-secondary font-medium italic mb-4">Connectez-vous pour voir vos voyages sauvegardés.</p>
+                        <Link
+                            href="/login"
+                            className="inline-flex items-center gap-2 bg-black text-white px-6 py-3 rounded-xl font-bold uppercase tracking-wider hover:bg-zinc-800 transition-colors"
+                        >
+                            Se connecter
+                        </Link>
+                    </div>
+                </div>
+            </main>
         );
     }
 

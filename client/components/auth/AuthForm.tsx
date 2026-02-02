@@ -40,7 +40,7 @@ export function AuthForm({ type }: AuthFormProps) {
                     password,
                 });
                 if (error) throw error;
-                router.push("/");
+                router.push("/trips");
                 router.refresh();
             }
         } catch (err: any) {

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import { Calendar, MapPin, Clock, Info, ChevronRight, Sparkles } from "lucide-react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { motion } from "framer-motion";
+import { MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket, Save, Check, Loader2 } from "lucide-react";
 import Link from "next/link";
-import { ItineraryMap } from "@/components/maps/ItineraryMap";
+import { createClient } from "@/lib/supabase/client";
 
 interface Activity {
     time: string;
@@ -28,37 +28,108 @@ interface Itinerary {
     tips: string[];
 }
 
+const getGoogleMapsUrl = (location: string, destination: string) => {
+    const query = encodeURIComponent(`${location}, ${destination}`);
+    return `https://www.google.com/maps/search/?api=1&query=${query}`;
+};
+
+const getBookingUrl = (location: string, destination: string) => {
+    const query = encodeURIComponent(`${location} ${destination}`);
+    return `https://www.google.com/search?q=${query}+tickets+booking+reservation`;
+};
+
 function PlannerContent() {
     const searchParams = useSearchParams();
-    const destination = searchParams.get("destination");
+    const router = useRouter();
+    const destinationParam = searchParams.get("destination");
     const [itinerary, setItinerary] = useState<Itinerary | null>(null);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [saved, setSaved] = useState(false);
+    const [user, setUser] = useState<any>(null);
+    const supabase = createClient();
 
     useEffect(() => {
-        if (!destination) return;
-
-        const generateTrip = async () => {
-            setLoading(true);
-            try {
-                const response = await fetch("/api/generate-itinerary", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ destination }),
-                });
-
-                if (!response.ok) throw new Error("Failed to generate itinerary");
-                const data = await response.json();
-                setItinerary(data);
-            } catch (err) {
-                setError(err instanceof Error ? err.message : "An error occurred");
-            } finally {
-                setLoading(false);
-            }
+        const checkUser = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            setUser(user);
         };
+        checkUser();
+    }, []);
 
-        generateTrip();
-    }, [destination]);
+    const saveTrip = async () => {
+        if (!itinerary || !user) {
+            console.log("Cannot save: itinerary=", !!itinerary, "user=", !!user);
+            return;
+        }
+
+        setSaving(true);
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips`, {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                    "x-user-id": user.id,
+                },
+                body: JSON.stringify({
+                    destination: itinerary.destination,
+                    title: itinerary.tripTitle,
+                    itinerary: itinerary,
+                }),
+            });
+
+            const data = await response.json();
+            if (response.ok) {
+                setSaved(true);
+            } else {
+                console.error("Error saving trip:", data);
+            }
+        } catch (err) {
+            console.error("Error saving trip:", err);
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const generateTrip = async (dest: string) => {
+        if (!dest.trim()) return;
+        setLoading(true);
+        setError(null);
+        try {
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/itinerary/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ destination: dest }),
+            });
+
+            if (!response.ok) throw new Error("Failed to generate itinerary");
+            const data = await response.json();
+            setItinerary(data);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "An error occurred");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (destinationParam) {
+            generateTrip(destinationParam);
+        }
+    }, [destinationParam]);
+
+    // Redirect to home if no destination
+    useEffect(() => {
+        if (!destinationParam && !itinerary) {
+            router.push("/");
+        }
+    }, [destinationParam, itinerary, router]);
+
+    // Show nothing while redirecting
+    if (!destinationParam && !itinerary) {
+        return null;
+    }
 
     if (loading) {
         return (
@@ -74,7 +145,7 @@ function PlannerContent() {
                     Designing your escape...
                 </h2>
                 <p className="text-text-secondary font-medium tracking-tight">
-                    AI is gathering the best spots in <span className="text-foreground font-bold">{destination}</span> for you.
+                    AI is gathering the best spots in <span className="text-foreground font-bold">{destinationParam}</span> for you.
                 </p>
             </div>
         );
@@ -110,9 +181,9 @@ function PlannerContent() {
                 </h1>
             </motion.header>
 
-            <div className="flex flex-col lg:flex-row gap-24">
-                {/* Left Side: Itinerary */}
-                <div className="lg:w-3/5 grid gap-24">
+            <div className="flex flex-col gap-24">
+                {/* Itinerary */}
+                <div className="grid gap-24">
                     {itinerary.days.map((day, dayIdx) => (
                         <motion.section
                             key={day.dayNumber}
@@ -142,9 +213,26 @@ function PlannerContent() {
                                                 <Clock className="w-3 h-3" />
                                                 <span>{activity.time}</span>
                                                 <span className="opacity-20">—</span>
-                                                <span>{activity.location}</span>
+                                                <a
+                                                    href={getGoogleMapsUrl(activity.location, itinerary.destination)}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
+                                                >
+                                                    {activity.location}
+                                                    <ExternalLink className="w-3 h-3" />
+                                                </a>
                                             </div>
-                                            <h4 className="text-2xl font-bold tracking-tight mb-2">{activity.activity}</h4>
+                                            <h4 className="text-2xl font-bold tracking-tight mb-3">{activity.activity}</h4>
+                                            <a
+                                                href={getBookingUrl(activity.location, itinerary.destination)}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
+                                            >
+                                                <Ticket className="w-3.5 h-3.5" />
+                                                Book / Reserve
+                                            </a>
                                         </div>
                                     ))}
                                 </div>
@@ -153,12 +241,6 @@ function PlannerContent() {
                     ))}
                 </div>
 
-                {/* Right Side: Sticky Map */}
-                <div className="lg:w-2/5">
-                    <div className="sticky top-32 lg:h-[calc(100vh-200px)]">
-                        <ItineraryMap itinerary={itinerary} />
-                    </div>
-                </div>
             </div>
 
             <motion.section
@@ -183,9 +265,41 @@ function PlannerContent() {
             </motion.section>
 
             <div className="mt-24 flex flex-col items-center gap-6">
-                <Link href="/trips" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all active:scale-95 shadow-xl shadow-black/10">
-                    View Saved Trips
-                </Link>
+                {user ? (
+                    <button
+                        onClick={saveTrip}
+                        disabled={saving || saved}
+                        className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all active:scale-95 shadow-xl shadow-black/10 inline-flex items-center gap-3 ${
+                            saved
+                                ? "bg-green-600 text-white"
+                                : "bg-black text-white"
+                        }`}
+                    >
+                        {saving ? (
+                            <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                Saving...
+                            </>
+                        ) : saved ? (
+                            <>
+                                <Check className="w-4 h-4" />
+                                Saved!
+                            </>
+                        ) : (
+                            <>
+                                <Save className="w-4 h-4" />
+                                Save This Trip
+                            </>
+                        )}
+                    </button>
+                ) : (
+                    <Link
+                        href="/login"
+                        className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all active:scale-95 shadow-xl shadow-black/10"
+                    >
+                        Login to Save
+                    </Link>
+                )}
                 <Link href="/" className="inline-flex items-center gap-4 text-[11px] font-black uppercase tracking-[0.3em] hover:gap-6 transition-all group opacity-60 hover:opacity-100">
                     Plan another escape
                     <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
