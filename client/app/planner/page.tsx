@@ -3,9 +3,17 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket, Save, Check, Loader2 } from "lucide-react";
+import { MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket, Save, Check, Loader2, Calendar, ChevronDown } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { generateICS } from "@/lib/icsGenerator";
+import { BudgetCard } from "@/components/BudgetCard";
+import { PackingWidget } from "@/components/PackingWidget";
+import { VibeCheck } from "@/components/VibeCheck";
+
+import { PlaceImage } from "@/components/PlaceImage";
+import { ItineraryMap } from "@/components/ItineraryMap";
+import { ActivityModal } from "@/components/ActivityModal";
 
 interface Activity {
     time: string;
@@ -13,6 +21,7 @@ interface Activity {
     location: string;
     lat: number;
     lng: number;
+    image_prompt?: string;
 }
 
 interface Day {
@@ -21,11 +30,38 @@ interface Day {
     activities: Activity[];
 }
 
+interface SmartFeatures {
+    budget_estimator: {
+        total_estimated: number;
+        currency: string;
+        breakdown: {
+            flights: number;
+            accommodation: number;
+            activities: number;
+            food: number;
+        };
+        budget_tips: string[];
+    };
+    packing_list: {
+        weather_forecast: string;
+        essentials: string[];
+    };
+    local_vibe: {
+        etiquette_tips: string[];
+        survival_phrases: Array<{
+            original: string;
+            pronunciation: string;
+            meaning: string;
+        }>;
+    };
+}
+
 interface Itinerary {
     tripTitle: string;
     destination: string;
     days: Day[];
     tips: string[];
+    smart_features?: SmartFeatures;
 }
 
 const getGoogleMapsUrl = (location: string, destination: string) => {
@@ -42,13 +78,27 @@ function PlannerContent() {
     const searchParams = useSearchParams();
     const router = useRouter();
     const destinationParam = searchParams.get("destination");
+    const tripIdParam = searchParams.get("tripId");
+
+    // Core Data State
     const [itinerary, setItinerary] = useState<Itinerary | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+
+    // UI State
+    const [showExportDate, setShowExportDate] = useState(false);
+    const [exportDate, setExportDate] = useState<string>("");
+
+    // Interactive Features State
+    const [expandedDay, setExpandedDay] = useState<number | null>(1); // Default open first day
+    const [selectedActivity, setSelectedActivity] = useState<Activity | null>(null);
+
     const [user, setUser] = useState<any>(null);
     const supabase = createClient();
+
+    const allActivities = itinerary ? itinerary.days.flatMap(d => d.activities) : [];
 
     useEffect(() => {
         const checkUser = async () => {
@@ -58,18 +108,42 @@ function PlannerContent() {
         checkUser();
     }, []);
 
-    const saveTrip = async () => {
-        if (!itinerary || !user) {
-            console.log("Cannot save: itinerary=", !!itinerary, "user=", !!user);
-            return;
-        }
+    const fetchSavedTrip = async (id: string) => {
+        setLoading(true);
+        setError(null);
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) throw new Error("Please login to view this trip");
 
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips/${id}`, {
+                headers: {
+                    "Authorization": `Bearer ${session.access_token}`,
+                    "x-user-id": session.user.id,
+                },
+            });
+
+            if (!response.ok) throw new Error("Failed to load trip");
+            const data = await response.json();
+            setItinerary(data.trip.itinerary);
+            setSaved(true);
+        } catch (err) {
+            setError(err instanceof Error ? err.message : "Failed to load trip");
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const saveTrip = async () => {
+        if (!itinerary || !user) return;
         setSaving(true);
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips`, {
                 method: "POST",
                 headers: {
                     "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`,
                     "x-user-id": user.id,
                 },
                 body: JSON.stringify({
@@ -78,18 +152,25 @@ function PlannerContent() {
                     itinerary: itinerary,
                 }),
             });
-
-            const data = await response.json();
-            if (response.ok) {
-                setSaved(true);
-            } else {
-                console.error("Error saving trip:", data);
-            }
+            if (response.ok) setSaved(true);
         } catch (err) {
-            console.error("Error saving trip:", err);
+            console.error(err);
         } finally {
             setSaving(false);
         }
+    };
+
+    const handleExport = () => {
+        if (!exportDate || !itinerary) return;
+        const icsData = generateICS(itinerary, new Date(exportDate));
+        const blob = new Blob([icsData], { type: "text/calendar;charset=utf-8" });
+        const link = document.createElement("a");
+        link.href = window.URL.createObjectURL(blob);
+        link.setAttribute("download", `${itinerary.tripTitle.replace(/\s+/g, "_")}.ics`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setShowExportDate(false);
     };
 
     const generateTrip = async (dest: string) => {
@@ -102,51 +183,35 @@ function PlannerContent() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ destination: dest }),
             });
-
-            if (!response.ok) throw new Error("Failed to generate itinerary");
+            if (!response.ok) throw new Error("Failed");
             const data = await response.json();
             setItinerary(data);
         } catch (err) {
-            setError(err instanceof Error ? err.message : "An error occurred");
+            setError(err instanceof Error ? err.message : "Error");
         } finally {
             setLoading(false);
         }
     };
 
     useEffect(() => {
-        if (destinationParam) {
-            generateTrip(destinationParam);
-        }
-    }, [destinationParam]);
+        if (tripIdParam) fetchSavedTrip(tripIdParam);
+        else if (destinationParam) generateTrip(destinationParam);
+    }, [destinationParam, tripIdParam]);
 
-    // Redirect to home if no destination
     useEffect(() => {
-        if (!destinationParam && !itinerary) {
-            router.push("/");
-        }
-    }, [destinationParam, itinerary, router]);
+        if (!destinationParam && !tripIdParam && !itinerary && !loading) router.push("/");
+    }, [destinationParam, tripIdParam, itinerary, loading, router]);
 
-    // Show nothing while redirecting
-    if (!destinationParam && !itinerary) {
-        return null;
-    }
+    if (!destinationParam && !tripIdParam && !itinerary && !loading) return null;
 
     if (loading) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-                <motion.div
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                    className="mb-8"
-                >
+                <motion.div animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }} className="mb-8">
                     <Sparkles className="w-12 h-12 text-primary" />
                 </motion.div>
-                <h2 className="text-4xl font-black tracking-tighter uppercase italic mb-4">
-                    Designing your escape...
-                </h2>
-                <p className="text-text-secondary font-medium tracking-tight">
-                    AI is gathering the best spots in <span className="text-foreground font-bold">{destinationParam}</span> for you.
-                </p>
+                <h2 className="text-4xl font-black tracking-tighter uppercase italic mb-4">Designing your escape...</h2>
+                <p className="text-text-secondary font-medium tracking-tight">AI is gathering coordinates and photos for <span className="text-foreground font-bold">{destinationParam}</span>.</p>
             </div>
         );
     }
@@ -154,156 +219,171 @@ function PlannerContent() {
     if (error || !itinerary) {
         return (
             <div className="min-h-screen flex flex-col items-center justify-center p-6 text-center">
-                <h2 className="text-2xl font-black tracking-tighter uppercase mb-4 text-red-500">
-                    Something went wrong
-                </h2>
-                <p className="text-text-secondary mb-8">{error || "Could not generate itinerary"}</p>
-                <Link href="/" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest">
-                    Go Back
-                </Link>
+                <h2 className="text-2xl font-black tracking-tighter uppercase mb-4 text-red-500">Something went wrong</h2>
+                <p className="text-text-secondary mb-8">{error}</p>
+                <Link href="/" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest">Go Back</Link>
             </div>
         );
     }
 
     return (
-        <div className="max-w-[1400px] mx-auto px-6 py-32">
-            <motion.header
-                initial={{ y: 20, opacity: 0 }}
-                animate={{ y: 0, opacity: 1 }}
-                className="mb-24"
-            >
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface border border-border mb-8">
-                    <MapPin className="w-4 h-4 text-text-secondary" />
+        <div className="max-w-[1600px] mx-auto px-6 py-24">
+            {/* Modal for Map Interaction */}
+            {selectedActivity && itinerary && (
+                <ActivityModal
+                    activity={selectedActivity}
+                    onClose={() => setSelectedActivity(null)}
+                    destination={itinerary.destination}
+                />
+            )}
+
+            {/* Header */}
+            <motion.header initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-16">
+                <Link href="/" className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-all mb-8 block">← Back Home</Link>
+                <h1 className="text-6xl md:text-8xl font-black tracking-tighter uppercase leading-[0.8] mb-4">{itinerary.tripTitle}</h1>
+                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface border border-border">
+                    <MapPin className="w-3 h-3 text-text-secondary" />
                     <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-secondary">{itinerary.destination}</span>
                 </div>
-                <h1 className="text-7xl md:text-9xl font-black tracking-tighter uppercase leading-[0.8] mb-8">
-                    {itinerary.tripTitle}
-                </h1>
             </motion.header>
 
-            <div className="flex flex-col gap-24">
-                {/* Itinerary */}
-                <div className="grid gap-24">
-                    {itinerary.days.map((day, dayIdx) => (
-                        <motion.section
-                            key={day.dayNumber}
-                            initial={{ opacity: 0, y: 30 }}
-                            whileInView={{ opacity: 1, y: 0 }}
-                            viewport={{ once: true }}
-                            transition={{ delay: 0.2 }}
-                            className="relative"
-                        >
-                            <div className="flex flex-col md:flex-row gap-12">
-                                <div className="md:w-1/4">
-                                    <div className="sticky top-32">
-                                        <span className="text-8xl font-black tracking-tighter opacity-5 block leading-none mb-4">
-                                            0{day.dayNumber}
-                                        </span>
-                                        <h3 className="text-xl font-black uppercase tracking-tight leading-tight">
-                                            {day.theme}
-                                        </h3>
+            <div className="flex flex-col lg:flex-row gap-12 relative">
+
+                {/* LEFT COLUMN: Collapsible Itinerary (60%) */}
+                <div className="w-full lg:w-[55%] space-y-6">
+                    <div className="space-y-6">
+                        {itinerary.days.map((day) => (
+                            <section key={day.dayNumber} className="relative bg-surface rounded-3xl overflow-hidden border border-border shadow-sm transition-all duration-300 hover:shadow-md">
+                                {/* Collapsible Header */}
+                                <button
+                                    onClick={() => setExpandedDay(expandedDay === day.dayNumber ? null : day.dayNumber)}
+                                    className="w-full flex items-center justify-between p-6 md:p-8 text-left bg-white/50 backdrop-blur-sm hover:bg-white transition-colors cursor-pointer"
+                                >
+                                    <div className="flex items-center gap-6">
+                                        <span className="text-5xl font-black tracking-tighter opacity-10 text-outline-text">0{day.dayNumber}</span>
+                                        <div>
+                                            <h3 className="text-xl md:text-2xl font-black uppercase tracking-tight leading-none mb-1">{day.theme}</h3>
+                                            <p className="text-xs font-bold text-text-secondary uppercase tracking-widest">{day.activities.length} Activities</p>
+                                        </div>
+                                    </div>
+                                    <div className={`w-10 h-10 rounded-full border border-border flex items-center justify-center transition-transform duration-300 ${expandedDay === day.dayNumber ? 'rotate-180 bg-black text-white border-black' : 'bg-white'}`}>
+                                        <ChevronDown className="w-5 h-5" />
+                                    </div>
+                                </button>
+
+                                {/* Collapsible Content */}
+                                <div className={`overflow-hidden transition-[max-height,opacity] duration-500 ease-in-out ${expandedDay === day.dayNumber ? 'max-h-[2000px] opacity-100' : 'max-h-0 opacity-0'}`}>
+                                    <div className="space-y-8 p-6 md:p-8 pt-0 border-t border-border/50">
+                                        {day.activities.map((activity, actIdx) => (
+                                            <div
+                                                key={actIdx}
+                                                className="relative group cursor-pointer"
+                                                onClick={() => setSelectedActivity(activity)} // Click anywhere to open modal details
+                                            >
+                                                <div className="bg-white rounded-2xl p-4 md:p-6 hover:bg-gray-50 transition-all border border-border/50 hover:border-black/10 hover:shadow-lg flex gap-6 items-start">
+
+                                                    {/* Thumbnail Image */}
+                                                    <div className="hidden md:block w-24 h-24 shrink-0 rounded-xl overflow-hidden shadow-sm">
+                                                        <PlaceImage
+                                                            query={activity.image_prompt || activity.activity}
+                                                            className="w-full h-full"
+                                                        />
+                                                    </div>
+
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-3 text-[10px] font-black tracking-[0.2em] text-text-secondary uppercase mb-2">
+                                                            <Clock className="w-3 h-3" />
+                                                            <span>{activity.time}</span>
+                                                        </div>
+                                                        <h4 className="text-lg font-bold tracking-tight mb-1 truncate group-hover:text-primary transition-colors">{activity.activity}</h4>
+                                                        <div className="flex items-center gap-2 mb-4">
+                                                            <MapPin className="w-3 h-3 text-primary/60" />
+                                                            <span className="text-xs font-medium text-text-secondary truncate">{activity.location}</span>
+                                                        </div>
+
+                                                        {/* Mini Actions */}
+                                                        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+                                                            <a
+                                                                href={getBookingUrl(activity.location, itinerary.destination)}
+                                                                target="_blank"
+                                                                rel="noopener noreferrer"
+                                                                className="px-3 py-1.5 bg-black text-white rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-gray-800"
+                                                            >
+                                                                Book
+                                                            </a>
+                                                            <button
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    setSelectedActivity(activity);
+                                                                }}
+                                                                className="px-3 py-1.5 bg-gray-100 text-foreground rounded-md text-[10px] font-bold uppercase tracking-wider hover:bg-gray-200"
+                                                            >
+                                                                Details
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
-
-                                <div className="md:w-3/4 space-y-12">
-                                    {day.activities.map((activity, actIdx) => (
-                                        <div key={actIdx} className="group relative pl-8 border-l border-border hover:border-black transition-colors">
-                                            <div className="absolute -left-[5px] top-0 w-[9px] h-[9px] rounded-full bg-border group-hover:bg-black transition-colors" />
-                                            <div className="flex items-center gap-4 text-[10px] font-black tracking-[0.2em] text-text-secondary uppercase mb-2">
-                                                <Clock className="w-3 h-3" />
-                                                <span>{activity.time}</span>
-                                                <span className="opacity-20">—</span>
-                                                <a
-                                                    href={getGoogleMapsUrl(activity.location, itinerary.destination)}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="inline-flex items-center gap-1.5 hover:text-foreground transition-colors"
-                                                >
-                                                    {activity.location}
-                                                    <ExternalLink className="w-3 h-3" />
-                                                </a>
-                                            </div>
-                                            <h4 className="text-2xl font-bold tracking-tight mb-3">{activity.activity}</h4>
-                                            <a
-                                                href={getBookingUrl(activity.location, itinerary.destination)}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 hover:bg-primary/20 text-primary rounded-lg text-xs font-bold uppercase tracking-wider transition-colors"
-                                            >
-                                                <Ticket className="w-3.5 h-3.5" />
-                                                Book / Reserve
-                                            </a>
-                                        </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </motion.section>
-                    ))}
-                </div>
-
-            </div>
-
-            <motion.section
-                initial={{ opacity: 0 }}
-                whileInView={{ opacity: 1 }}
-                className="mt-32 p-12 bg-surface rounded-3xl border border-border"
-            >
-                <div className="flex items-center gap-4 mb-8">
-                    <div className="p-3 rounded-2xl bg-white border border-border">
-                        <Info className="w-6 h-6 text-primary" />
+                            </section>
+                        ))}
                     </div>
-                    <h3 className="text-2xl font-black uppercase tracking-tighter">Pro Tips</h3>
-                </div>
-                <ul className="grid md:grid-cols-2 gap-6">
-                    {itinerary.tips.map((tip, i) => (
-                        <li key={i} className="flex gap-4 text-sm font-medium text-text-secondary leading-relaxed italic">
-                            <ChevronRight className="w-4 h-4 text-primary shrink-0" />
-                            {tip}
-                        </li>
-                    ))}
-                </ul>
-            </motion.section>
 
-            <div className="mt-24 flex flex-col items-center gap-6">
-                {user ? (
-                    <button
-                        onClick={saveTrip}
-                        disabled={saving || saved}
-                        className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all active:scale-95 shadow-xl shadow-black/10 inline-flex items-center gap-3 ${
-                            saved
-                                ? "bg-green-600 text-white"
-                                : "bg-black text-white"
-                        }`}
-                    >
-                        {saving ? (
-                            <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                Saving...
-                            </>
-                        ) : saved ? (
-                            <>
-                                <Check className="w-4 h-4" />
-                                Saved!
-                            </>
+                    {/* Widgets Section */}
+                    {itinerary.smart_features && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pt-12 border-t border-border">
+                            <BudgetCard data={itinerary.smart_features.budget_estimator} />
+                            <PackingWidget data={itinerary.smart_features.packing_list} />
+                            <div className="md:col-span-2">
+                                <VibeCheck data={itinerary.smart_features.local_vibe} />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Action Buttons Footer */}
+                    <div className="pt-12 flex flex-col items-center gap-6">
+                        {user ? (
+                            <button
+                                onClick={saveTrip}
+                                disabled={saving || saved}
+                                className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl inline-flex items-center gap-3 ${saved ? "bg-green-600 text-white" : "bg-black text-white"}`}
+                            >
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                                {saved ? "Saved!" : "Save This Trip"}
+                            </button>
                         ) : (
-                            <>
-                                <Save className="w-4 h-4" />
-                                Save This Trip
-                            </>
+                            <Link href="/login" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl">
+                                Login to Save
+                            </Link>
                         )}
-                    </button>
-                ) : (
-                    <Link
-                        href="/login"
-                        className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all active:scale-95 shadow-xl shadow-black/10"
-                    >
-                        Login to Save
-                    </Link>
-                )}
-                <Link href="/" className="inline-flex items-center gap-4 text-[11px] font-black uppercase tracking-[0.3em] hover:gap-6 transition-all group opacity-60 hover:opacity-100">
-                    Plan another escape
-                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-                </Link>
+                        <button onClick={() => setShowExportDate(!showExportDate)} className="text-xs font-bold uppercase tracking-widest opacity-50 hover:opacity-100 flex items-center gap-2">
+                            <Calendar className="w-3 h-3" /> Export to Calendar
+                        </button>
+                        {showExportDate && (
+                            <div className="flex gap-2 p-2 bg-white border border-border rounded-lg shadow-xl">
+                                <input type="date" onChange={(e) => setExportDate(e.target.value)} className="text-sm p-1" />
+                                <button onClick={handleExport} disabled={!exportDate} className="bg-black text-white p-1 rounded"><Check className="w-3 h-3" /></button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+
+                {/* RIGHT COLUMN: Sticky Map (45%) */}
+                <div className="hidden lg:block w-[45%] relative">
+                    <div className="sticky top-8 h-[calc(100vh-4rem)] bg-surface rounded-3xl overflow-hidden border border-border shadow-2xl">
+                        <ItineraryMap
+                            activities={allActivities}
+                            onMarkerClick={setSelectedActivity}
+                        />
+                        <div className="absolute bottom-6 left-6 right-6 bg-white/90 backdrop-blur-md p-4 rounded-2xl border border-border shadow-lg">
+                            <h4 className="text-xs font-black uppercase tracking-widest mb-1 text-text-secondary">Interactive Map</h4>
+                            <p className="text-sm font-medium">Click on markers to see details about {allActivities.length} locations.</p>
+                        </div>
+                    </div>
+                </div>
+
             </div>
         </div>
     );
