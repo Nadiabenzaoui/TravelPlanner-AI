@@ -6,37 +6,28 @@ import { Image as ImageIcon, ImageOff } from "lucide-react";
 interface PlaceImageProps {
     query: string;
     className?: string;
+    width?: number;
+    height?: number;
 }
 
-export function PlaceImage({ query, className }: PlaceImageProps) {
+export function PlaceImage({ query, className, width = 800, height = 600 }: PlaceImageProps) {
     const [error, setError] = useState(false);
 
-    // Using unslash source for simple keyword based fetching
-    // Format: https://source.unsplash.com/800x600/?keyword
-    // Note: source.unsplash.com is deprecated but often still works for demos. 
-    // Ideally we would use the API or a different placeholder service if it fails.
-    // Fallback: https://images.unsplash.com/photo-1... (static) or similar based on simple logic.
-
-    // Better Approach for Production: Use standard Unsplash API or a proxied service. 
-    // For this prototype, we'll try a direct search url structure or a reliable placeholder service with keywords.
-    // Let's use `pollinations.ai` or similar simple generative/search placeholder if unsplash source is down, 
-    // OR just use unsplash source and handle error.
+    // ... (omitted comments)
 
     // Fallback to "travel" if query is empty to avoid broken links
     const safeQuery = query?.trim() ? query : "travel";
 
-    // Clean and truncate query to avoid URL length issues or invalid segments
-    // 1. Remove brackets/parentheses and their content often containing extra details
-    // 2. Limit to first 60 chars to be safe
-    const cleanPrompt = safeQuery
-        .replace(/\([^)]*\)/g, "") // Remove (text)
-        .replace(/[^\w\s,]/g, "") // Remove special chars
-        .split(" ").slice(0, 6).join(" ") // Keep first 6 words
-        .trim();
+    // ... (omitted keyword extraction)
+    const keywords = safeQuery
+        .replace(/\([^)]*\)/g, "")
+        .replace(/Arrive at|Transfer to|Check into|Visit|Explore|Lunch at|Dinner at|Walk around/gi, "")
+        .replace(/[^\w\s,]/g, "")
+        .trim()
+        .split(" ")
+        .slice(0, 3)
+        .join(",");
 
-    // Generate a deterministic seed from the query string
-    // This ensures consistent images for the same activity, but unique images for different activities
-    // avoiding the "same random image" issue on re-renders or hydration
     const getSeed = (str: string) => {
         let hash = 0;
         for (let i = 0; i < str.length; i++) {
@@ -46,18 +37,17 @@ export function PlaceImage({ query, className }: PlaceImageProps) {
         }
         return Math.abs(hash);
     };
-    const seed = getSeed(cleanPrompt);
+    const seed = getSeed(safeQuery);
 
-    // Primary: Pollinations AI - High quality generative
-    // We add the seed to verify uniqueness
-    const primaryUrl = `https://pollinations.ai/p/${encodeURIComponent(cleanPrompt + " travel photography")}?width=800&height=600&model=flux&seed=${seed}`;
+    // Primary: LoremFlickr - Reliable stock photos based on keywords
+    // We force "travel", "landmark", "tourism" to ensure the vibe matches the destination page
+    const primaryUrl = `https://loremflickr.com/${width}/${height}/travel,landmark,tourism,${encodeURIComponent(keywords)}/all?lock=${seed}`;
 
-    // Secondary: LoremFlickr - Reliable keyword based stock photos
-    // We use the deterministic seed for the lock, ensuring unique images per activity
-    const secondaryUrl = `https://loremflickr.com/800/600/${encodeURIComponent(cleanPrompt.replace(/ /g, ","))}/all?lock=${seed}`;
+    // Secondary: Pollinations AI - Generative fallback if stock photo fails
+    const secondaryUrl = `https://pollinations.ai/p/${encodeURIComponent(safeQuery + " cinematic travel photography 4k")}?width=${width}&height=${height}&model=flux&seed=${seed}`;
 
     // Backup: Placehold.co - Last resort text placeholder
-    const backupUrl = `https://placehold.co/800x600/EEE/31343C?text=${encodeURIComponent(cleanPrompt.substring(0, 30))}`;
+    const backupUrl = `https://placehold.co/${width}x${height}/EEE/31343C?text=${encodeURIComponent(safeQuery.substring(0, 30))}`;
 
     const [imgSrc, setImgSrc] = useState(primaryUrl);
     const [attempt, setAttempt] = useState(0);
@@ -71,15 +61,15 @@ export function PlaceImage({ query, className }: PlaceImageProps) {
 
     const handleError = () => {
         if (attempt === 0) {
-            console.log("Primary image failed, switching to LoremFlickr for:", cleanPrompt);
+            console.log("Primary (LoremFlickr) failed, switching to Pollinations for:", keywords);
             setImgSrc(secondaryUrl);
             setAttempt(1);
         } else if (attempt === 1) {
-            console.log("Secondary image failed, switching to text placeholder for:", cleanPrompt);
+            console.log("Secondary (Pollinations) failed, switching to text placeholder for:", safeQuery);
             setImgSrc(backupUrl);
             setAttempt(2);
         } else {
-            console.log("All image sources failed for:", cleanPrompt);
+            console.log("All image sources failed for:", safeQuery);
             setError(true);
         }
     };

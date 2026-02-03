@@ -29,9 +29,16 @@ export async function updateSession(request: NextRequest) {
         }
     );
 
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
+    // IMPORTANT: Avoids "AuthApiError: Invalid Refresh Token: Refresh Token Not Found"
+    // from crashing the middleware or flooding logs.
+    // If the token is invalid, we simply treat it as "no user".
+    let user = null;
+    try {
+        const { data } = await supabase.auth.getUser();
+        user = data.user;
+    } catch (error) {
+        // Silently ignore auth errors - treating as logged out
+    }
 
     // Routes protégées - rediriger vers login si non connecté
     const protectedRoutes = ["/planner", "/trips", "/profile"];

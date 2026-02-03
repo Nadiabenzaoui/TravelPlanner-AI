@@ -124,7 +124,7 @@ export default function Home() {
             {user && (
               <Link href="/trips" className="hover:text-foreground transition-all duration-300">My Trips</Link>
             )}
-            <Link href="#" className="hover:text-foreground transition-all duration-300">Destinations</Link>
+            <Link href="/destinations" className="hover:text-foreground transition-all duration-300">Destinations</Link>
           </div>
         </div>
         <div className="flex items-center gap-8 text-[11px] font-black uppercase tracking-[0.2em]">
@@ -142,6 +142,9 @@ export default function Home() {
           <motion.button
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
+            onClick={() => {
+              window.scrollTo({ top: window.innerHeight * 0.3, behavior: 'smooth' });
+            }}
             className="px-6 py-2.5 bg-primary text-white rounded-lg font-black hover:bg-black transition-all shadow-lg shadow-black/5"
           >
             FIND YOUR TRIP

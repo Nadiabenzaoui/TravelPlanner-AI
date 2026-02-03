@@ -32,6 +32,26 @@ router.get("/", asyncHandler(async (req: AuthenticatedRequest, res: Response) =>
     res.json({ trips });
 }));
 
+// GET - Fetch a single trip by ID
+router.get("/:id", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+    const userId = req.user!.id;
+    const { id } = req.params;
+
+    const { data: trip, error } = await supabase
+        .from("trips")
+        .select("*")
+        .eq("id", id)
+        .eq("user_id", userId)
+        .single();
+
+    if (error) {
+        console.error("Error fetching trip:", error);
+        throw ApiError.notFound("Trip not found");
+    }
+
+    res.json({ trip });
+}));
+
 // POST - Save a new trip
 router.post(
     "/",

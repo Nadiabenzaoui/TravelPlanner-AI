@@ -37,9 +37,14 @@ export default function TripsPage() {
     const fetchTrips = async (userId: string) => {
         setLoading(true);
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips`, {
                 headers: {
-                    "x-user-id": userId,
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`,
+                    "x-user-id": userId, // Optional now, but kept for consistency
                 },
             });
             const data = await res.json();
@@ -59,10 +64,14 @@ export default function TripsPage() {
 
         setDeleting(id);
         try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
             const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips`, {
                 method: "DELETE",
                 headers: {
                     "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`,
                     "x-user-id": user.id,
                 },
                 body: JSON.stringify({ id }),
@@ -177,7 +186,7 @@ export default function TripsPage() {
                                     {new Date(trip.created_at).toLocaleDateString("fr-FR")}
                                 </div>
                                 <Link
-                                    href={`/planner?destination=${encodeURIComponent(trip.destination)}`}
+                                    href={`/planner?tripId=${trip.id}`}
                                     className="p-3 bg-black text-white rounded-xl hover:scale-110 transition-all active:scale-95"
                                 >
                                     <ArrowRight className="w-4 h-4" />

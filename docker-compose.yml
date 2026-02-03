@@ -3,6 +3,8 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
     ports:
       - "3000:3000"
     env_file:
@@ -21,6 +23,10 @@ services:
       - "4000:4000"
     env_file:
       - ./server/.env
+    volumes:
+      - ./server:/app
+      - /app/node_modules
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
+    command: npm run dev
     restart: always

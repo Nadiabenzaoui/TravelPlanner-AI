@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket, Save, Check, Loader2, Calendar, ChevronDown } from "lucide-react";
+import { MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket, Save, Check, Loader2, Calendar, ChevronDown, Globe } from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { generateICS } from "@/lib/icsGenerator";
@@ -240,10 +240,22 @@ function PlannerContent() {
             {/* Header */}
             <motion.header initial={{ y: 20, opacity: 0 }} animate={{ y: 0, opacity: 1 }} className="mb-16">
                 <Link href="/" className="text-[10px] font-black uppercase tracking-[0.2em] opacity-40 hover:opacity-100 transition-all mb-8 block">← Back Home</Link>
-                <h1 className="text-6xl md:text-8xl font-black tracking-tighter uppercase leading-[0.8] mb-4">{itinerary.tripTitle}</h1>
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface border border-border">
-                    <MapPin className="w-3 h-3 text-text-secondary" />
-                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-secondary">{itinerary.destination}</span>
+                <h1 className="text-6xl md:text-8xl font-black tracking-tighter uppercase leading-[0.8] mb-8">{itinerary.tripTitle}</h1>
+
+                <div className="flex flex-wrap items-center gap-4">
+                    <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-surface border border-border">
+                        <MapPin className="w-3 h-3 text-text-secondary" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em] text-text-secondary">{itinerary.destination}</span>
+                    </div>
+
+                    {/* Country Insights Link */}
+                    <Link
+                        href={`/destinations/${itinerary.destination.split(',').pop()?.trim() || itinerary.destination}`}
+                        className="inline-flex items-center gap-2 px-6 py-2 rounded-full bg-black text-white hover:scale-105 transition-transform shadow-lg"
+                    >
+                        <Globe className="w-3 h-3" />
+                        <span className="text-[10px] font-black uppercase tracking-[0.2em]">Discover {itinerary.destination.split(',').pop()?.trim()}</span>
+                    </Link>
                 </div>
             </motion.header>
 
