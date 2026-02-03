@@ -1,36 +1,119 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 🌍 TravelPlanner AI
 
-## Getting Started
+**The next generation of travel planning, powered by AI.**  
+Say goodbye to hours of research. TravelPlanner AI creates personalized, day-by-day itineraries in seconds, complete with budget estimates, local insights, and essential travel tools.
 
-First, run the development server:
+![TravelPlanner AI Hero Banner](public/web-app-manifest-512x512.png) 
+*(Note: Replace with actual screenshot)*
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+## ✨ Key Features
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+### 🧠 AI-Powered Itineraries
+Generates comprehensive travel plans tailored to your destination.
+- **Smart Scheduling**: Morning, Afternoon, and Evening activities.
+- **Dynamic Content**: Uses Gemini AI to find hidden gems and popular spots.
+- **Interactive Map**: Visualize your trip with Google Places integration.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### 🔍 Destination Insights ("Discovery")
+Explore countries before you book.
+- **Visual Richness**: High-quality, curated images for every destination.
+- **Key Stats**: Population, Currency, Language, and Capital at a glance.
+- **Travel Toolkit**: 
+    - 🛂 **Visa Info**: Instant summary of visa requirements.
+    - 🚨 **Emergency**: Police & Ambulance numbers.
+    - 📱 **Essential Apps**: Must-have local apps (Ride-sharing, Food delivery).
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### 💰 Smart Budgeting
+- **Cost Estimator**: AI predicts flight, hotel, and daily expenses.
+- **Currency Conversion**: Live currency display for your destination.
 
-## Learn More
+### 🎨 Modern UI/UX
+- **Glassmorphism Design**: Sleek, modern interface with lucid-react icons.
+- **Responsive**: Fully optimized for Desktop and Mobile.
+- **Fast**: Built on Next.js 16 (Turbopack) for lightning speed.
 
-To learn more about Next.js, take a look at the following resources:
+---
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 🛠️ Tech Stack
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- **Frontend**: Next.js 16 (App Router), React, Tailwind CSS, Framer Motion.
+- **Backend**: Node.js, Express.
+- **Database**: Supabase (PostgreSQL).
+- **AI**: Google Gemini 1.5 Flash.
+- **APIs**: RestCountries, Nominatim (OpenStreetMap), Google Maps/Places.
+- **Containerization**: Docker & Docker Compose.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 🚀 Getting Started
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Prerequisites
+- Node.js 20+
+- Docker & Docker Compose (optional, for containerized run)
+- A Google Gemini API Key
+- A Supabase Project
+
+### Option A: Quick Start with Docker (Recommended)
+
+1.  **Clone the repository**
+    ```bash
+    git clone https://github.com/YourUsername/TravelPlanner-AI.git
+    cd TravelPlanner-AI
+    ```
+
+2.  **Set up Environment Variables**
+    Create a `.env` file in the root directory (see `.env.example`).
+    ```env
+    # Server
+    GEMINI_API_KEY=your_gemini_key
+    SUPABASE_URL=your_supabase_url
+    SUPABASE_ANON_KEY=your_supabase_key
+
+    # Client
+    NEXT_PUBLIC_API_URL=http://localhost:4000
+    NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_maps_key
+    ```
+
+3.  **Run with Docker Compose**
+    ```bash
+    docker-compose up --build
+    ```
+    - Client: `http://localhost:3000`
+    - Server: `http://localhost:4000`
+
+### Option B: Local Development
+
+1.  **Install Dependencies**
+    ```bash
+    # Client
+    cd client && npm install
+    # Server
+    cd ../server && npm install
+    ```
+
+2.  **Start Services**
+    ```bash
+    # Terminal 1 (Server)
+    cd server && npm run dev
+
+    # Terminal 2 (Client)
+    cd client && npm run dev
+    ```
+
+---
+
+## 📸 Screenshots
+
+| Home Page | Destination Discovery | Itinerary Planner |
+|:---------:|:-------------------:|:-----------------:|
+| *(Add Image)* | *(Add Image)* | *(Add Image)* |
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please fork the repository and submit a pull request for any features or bug fixes.
+
+---
+
+Made with ❤️ by [Nadia Benzaoui]
