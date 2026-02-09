@@ -39,12 +39,12 @@ export function PlaceImage({ query, className, width = 800, height = 600 }: Plac
     };
     const seed = getSeed(safeQuery);
 
-    // Primary: LoremFlickr - Reliable stock photos based on keywords
-    // We force "travel", "landmark", "tourism" to ensure the vibe matches the destination page
-    const primaryUrl = `https://loremflickr.com/${width}/${height}/travel,landmark,tourism,${encodeURIComponent(keywords)}/all?lock=${seed}`;
+    // Primary: Pollinations AI - Generative, specific, and unique
+    // We append "cinematic travel photography 4k" to ensure high quality style
+    const primaryUrl = `https://pollinations.ai/p/${encodeURIComponent(safeQuery + " cinematic travel photography 4k")}?width=${width}&height=${height}&model=flux&seed=${seed}`;
 
-    // Secondary: Pollinations AI - Generative fallback if stock photo fails
-    const secondaryUrl = `https://pollinations.ai/p/${encodeURIComponent(safeQuery + " cinematic travel photography 4k")}?width=${width}&height=${height}&model=flux&seed=${seed}`;
+    // Secondary: LoremFlickr - Stock photo fallback
+    const secondaryUrl = `https://loremflickr.com/${width}/${height}/travel,landmark,tourism,${encodeURIComponent(keywords)}/all?lock=${seed}`;
 
     // Backup: Placehold.co - Last resort text placeholder
     const backupUrl = `https://placehold.co/${width}x${height}/EEE/31343C?text=${encodeURIComponent(safeQuery.substring(0, 30))}`;
@@ -61,11 +61,11 @@ export function PlaceImage({ query, className, width = 800, height = 600 }: Plac
 
     const handleError = () => {
         if (attempt === 0) {
-            console.log("Primary (LoremFlickr) failed, switching to Pollinations for:", keywords);
+            console.log("Primary (Pollinations) failed, switching to LoremFlickr for:", keywords);
             setImgSrc(secondaryUrl);
             setAttempt(1);
         } else if (attempt === 1) {
-            console.log("Secondary (Pollinations) failed, switching to text placeholder for:", safeQuery);
+            console.log("Secondary (LoremFlickr) failed, switching to text placeholder for:", safeQuery);
             setImgSrc(backupUrl);
             setAttempt(2);
         } else {

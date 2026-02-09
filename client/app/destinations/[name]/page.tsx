@@ -182,7 +182,7 @@ function CountryDetails() {
             {/* Hero Section */}
             <div className="relative h-[60vh] w-full overflow-hidden">
                 <PlaceImage
-                    query={country.name.common + " beautiful scenic landmark travel wallpaper"}
+                    query={countryName + " famous landmark scenic travel"}
                     width={1920}
                     height={1080}
                     className="w-full h-full object-cover"

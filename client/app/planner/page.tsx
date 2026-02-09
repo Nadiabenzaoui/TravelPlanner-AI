@@ -3,7 +3,10 @@
 import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { motion } from "framer-motion";
-import { MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket, Save, Check, Loader2, Calendar, ChevronDown, Globe } from "lucide-react";
+import {
+    MapPin, Clock, Info, ChevronRight, Sparkles, ExternalLink, Ticket,
+    Save, Check, Loader2, Calendar, ChevronDown, Globe, Share2, Copy, Lock, Unlock
+} from "lucide-react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { generateICS } from "@/lib/icsGenerator";
@@ -62,6 +65,7 @@ interface Itinerary {
     days: Day[];
     tips: string[];
     smart_features?: SmartFeatures;
+    is_public?: boolean;
 }
 
 const getGoogleMapsUrl = (location: string, destination: string) => {
@@ -79,6 +83,7 @@ function PlannerContent() {
     const router = useRouter();
     const destinationParam = searchParams.get("destination");
     const tripIdParam = searchParams.get("tripId");
+    const dateParam = searchParams.get("date");
 
     // Core Data State
     const [itinerary, setItinerary] = useState<Itinerary | null>(null);
@@ -86,6 +91,12 @@ function PlannerContent() {
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [saved, setSaved] = useState(false);
+
+    // Sharing State
+    const [isPublic, setIsPublic] = useState(false);
+    const [isOwner, setIsOwner] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
+    const [copying, setCopying] = useState(false);
 
     // UI State
     const [showExportDate, setShowExportDate] = useState(false);
@@ -112,25 +123,65 @@ function PlannerContent() {
         setLoading(true);
         setError(null);
         try {
+            // Try to get session, but don't fail if none (public access)
             const { data: { session } } = await supabase.auth.getSession();
-            if (!session) throw new Error("Please login to view this trip");
+            const headers: HeadersInit = {};
+            if (session) {
+                headers["Authorization"] = `Bearer ${session.access_token}`;
+                headers["x-user-id"] = session.user.id;
+            }
 
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips/${id}`, {
-                headers: {
-                    "Authorization": `Bearer ${session.access_token}`,
-                    "x-user-id": session.user.id,
-                },
+                headers
             });
 
-            if (!response.ok) throw new Error("Failed to load trip");
+            if (!response.ok) {
+                if (response.status === 403) throw new Error("This trip is private.");
+                throw new Error("Failed to load trip");
+            }
+
             const data = await response.json();
             setItinerary(data.trip.itinerary);
+            setIsPublic(data.trip.is_public);
+            setIsOwner(data.isOwner || false); // Backend returns isOwner
             setSaved(true);
         } catch (err) {
             setError(err instanceof Error ? err.message : "Failed to load trip");
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleShareToggle = async () => {
+        if (!tripIdParam || !isOwner) return;
+
+        const newStatus = !isPublic;
+        try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (!session) return;
+
+            const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/trips/${tripIdParam}/share`, {
+                method: "PUT",
+                headers: {
+                    "Content-Type": "application/json",
+                    "Authorization": `Bearer ${session.access_token}`,
+                },
+                body: JSON.stringify({ is_public: newStatus })
+            });
+
+            if (response.ok) {
+                setIsPublic(newStatus);
+            }
+        } catch (err) {
+            console.error("Failed to toggle share", err);
+        }
+    };
+
+    const copyLink = () => {
+        const url = `${window.location.origin}/planner?tripId=${tripIdParam}`;
+        navigator.clipboard.writeText(url);
+        setCopying(true);
+        setTimeout(() => setCopying(false), 2000);
     };
 
     const saveTrip = async () => {
@@ -173,19 +224,28 @@ function PlannerContent() {
         setShowExportDate(false);
     };
 
-    const generateTrip = async (dest: string) => {
+    const generateTrip = async (dest: string, dateParam?: string | null) => {
         if (!dest.trim()) return;
         setLoading(true);
         setError(null);
         try {
+            const preferences = dateParam ? `Travel Date: ${dateParam}` : undefined;
             const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/itinerary/generate`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ destination: dest }),
+                body: JSON.stringify({ destination: dest, preferences }),
             });
             if (!response.ok) throw new Error("Failed");
             const data = await response.json();
             setItinerary(data);
+
+            // Cache the result
+            try {
+                const cacheKey = `itinerary_${dest}_${dateParam || 'nodate'}`;
+                sessionStorage.setItem(cacheKey, JSON.stringify(data));
+            } catch (e) {
+                console.warn("Failed to cache itinerary:", e);
+            }
         } catch (err) {
             setError(err instanceof Error ? err.message : "Error");
         } finally {
@@ -194,9 +254,26 @@ function PlannerContent() {
     };
 
     useEffect(() => {
-        if (tripIdParam) fetchSavedTrip(tripIdParam);
-        else if (destinationParam) generateTrip(destinationParam);
-    }, [destinationParam, tripIdParam]);
+        if (tripIdParam) {
+            fetchSavedTrip(tripIdParam);
+        } else if (destinationParam) {
+            // Check cache first
+            const cacheKey = `itinerary_${destinationParam}_${dateParam || 'nodate'}`;
+            const cached = sessionStorage.getItem(cacheKey);
+
+            if (cached) {
+                try {
+                    setItinerary(JSON.parse(cached));
+                    setLoading(false);
+                } catch {
+                    sessionStorage.removeItem(cacheKey);
+                    generateTrip(destinationParam, dateParam);
+                }
+            } else {
+                generateTrip(destinationParam, dateParam);
+            }
+        }
+    }, [destinationParam, tripIdParam, dateParam]);
 
     useEffect(() => {
         if (!destinationParam && !tripIdParam && !itinerary && !loading) router.push("/");
@@ -297,7 +374,7 @@ function PlannerContent() {
                                                     {/* Thumbnail Image */}
                                                     <div className="hidden md:block w-24 h-24 shrink-0 rounded-xl overflow-hidden shadow-sm">
                                                         <PlaceImage
-                                                            query={activity.image_prompt || activity.activity}
+                                                            query={`${activity.activity} in ${activity.location}`}
                                                             className="w-full h-full"
                                                         />
                                                     </div>
@@ -355,21 +432,77 @@ function PlannerContent() {
                     )}
 
                     {/* Action Buttons Footer */}
-                    <div className="pt-12 flex flex-col items-center gap-6">
-                        {user ? (
-                            <button
-                                onClick={saveTrip}
-                                disabled={saving || saved}
-                                className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl inline-flex items-center gap-3 ${saved ? "bg-green-600 text-white" : "bg-black text-white"}`}
-                            >
-                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
-                                {saved ? "Saved!" : "Save This Trip"}
-                            </button>
-                        ) : (
-                            <Link href="/login" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl">
-                                Login to Save
-                            </Link>
-                        )}
+                    <div className="pt-12 flex flex-col items-center gap-6 pb-24">
+                        <div className="flex gap-4">
+                            {user ? (
+                                <>
+                                    {/* Save Button (Only if not saved or owner) */}
+                                    {(!saved || isOwner) && (
+                                        <button
+                                            onClick={saveTrip}
+                                            disabled={saving || (saved && !isOwner)} // Allow re-save? simplified for now
+                                            className={`px-8 py-4 rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl inline-flex items-center gap-3 ${saved ? "bg-green-600 text-white" : "bg-black text-white"}`}
+                                        >
+                                            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : saved ? <Check className="w-4 h-4" /> : <Save className="w-4 h-4" />}
+                                            {saved ? "Saved" : "Save Trip"}
+                                        </button>
+                                    )}
+
+                                    {/* Share Button (Only for Owner and if saved) */}
+                                    {saved && isOwner && (
+                                        <div className="relative">
+                                            <button
+                                                onClick={() => setShowShareModal(!showShareModal)}
+                                                className="px-8 py-4 bg-white text-black border border-black/10 rounded-xl font-black text-sm uppercase tracking-widest hover:bg-gray-50 transition-all shadow-xl inline-flex items-center gap-3"
+                                            >
+                                                {isPublic ? <Globe className="w-4 h-4 text-primary" /> : <Lock className="w-4 h-4" />}
+                                                Share
+                                            </button>
+
+                                            {/* Share Popover */}
+                                            {showShareModal && (
+                                                <div className="absolute bottom-full mb-4 left-1/2 -translate-x-1/2 w-80 bg-white rounded-2xl shadow-2xl border border-border p-6 z-50 animate-in fade-in slide-in-from-bottom-4">
+                                                    <h3 className="text-lg font-bold mb-2">Share your Trip</h3>
+                                                    <p className="text-xs text-text-secondary mb-4">
+                                                        {isPublic ? "Anyone with the link can view this." : "Only you can see this trip."}
+                                                    </p>
+
+                                                    <div className="flex items-center gap-2 mb-4 p-2 bg-gray-50 rounded-lg">
+                                                        <button
+                                                            onClick={handleShareToggle}
+                                                            className={`flex-1 py-2 rounded-md text-xs font-bold uppercase transition-colors ${isPublic ? "bg-black text-white" : "bg-gray-200 text-gray-500"}`}
+                                                        >
+                                                            Public
+                                                        </button>
+                                                        <button
+                                                            onClick={handleShareToggle}
+                                                            className={`flex-1 py-2 rounded-md text-xs font-bold uppercase transition-colors ${!isPublic ? "bg-black text-white" : "bg-gray-200 text-gray-500"}`}
+                                                        >
+                                                            Private
+                                                        </button>
+                                                    </div>
+
+                                                    {isPublic && (
+                                                        <button
+                                                            onClick={copyLink}
+                                                            className="w-full flex items-center justify-center gap-2 py-3 border border-border rounded-xl text-xs font-bold uppercase hover:bg-gray-50"
+                                                        >
+                                                            {copying ? <Check className="w-3 h-3 text-green-600" /> : <Copy className="w-3 h-3" />}
+                                                            {copying ? "Copied!" : "Copy Link"}
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </>
+                            ) : (
+                                <Link href="/login" className="px-8 py-4 bg-black text-white rounded-xl font-black text-sm uppercase tracking-widest hover:scale-105 transition-all shadow-xl">
+                                    Login to Save
+                                </Link>
+                            )}
+                        </div>
+
                         <button onClick={() => setShowExportDate(!showExportDate)} className="text-xs font-bold uppercase tracking-widest opacity-50 hover:opacity-100 flex items-center gap-2">
                             <Calendar className="w-3 h-3" /> Export to Calendar
                         </button>

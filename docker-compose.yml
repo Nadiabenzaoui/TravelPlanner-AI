@@ -3,14 +3,20 @@ services:
     build:
       context: ./client
       dockerfile: Dockerfile
+      target: deps
       args:
         NEXT_PUBLIC_GOOGLE_MAPS_API_KEY: ${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY}
     ports:
       - "3000:3000"
     env_file:
       - ./client/.env
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+      - /app/.next
     environment:
-      - NODE_ENV=production
+      - NODE_ENV=development
+    command: npm run dev
     depends_on:
       - server
     restart: always

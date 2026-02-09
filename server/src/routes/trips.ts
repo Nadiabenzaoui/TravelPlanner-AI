@@ -1,4 +1,4 @@
-import { Router, Response } from "express";
+import { Router, Response, Request } from "express";
 import { supabase } from "../lib/supabase.js";
 import {
     verifyToken,
@@ -11,7 +11,43 @@ import { createTripSchema, deleteTripSchema } from "../schemas/index.js";
 
 const router = Router();
 
-// All routes require authentication
+// --- PUBLIC ROUTES (No Auth Required) ---
+
+// GET - Fetch a single trip by ID (Public or Private)
+router.get("/:id", asyncHandler(async (req: Request, res: Response) => {
+    const { id } = req.params;
+
+    // Check for auth token optionally to identify owner
+    let userId: string | undefined;
+    const authHeader = req.headers.authorization;
+    if (authHeader) {
+        const token = authHeader.split(" ")[1];
+        const { data: { user } } = await supabase.auth.getUser(token);
+        if (user) userId = user.id;
+    }
+
+    const { data: trip, error } = await supabase
+        .from("trips")
+        .select("*")
+        .eq("id", id)
+        .single();
+
+    if (error || !trip) {
+        throw ApiError.notFound("Trip not found");
+    }
+
+    // Access Control: Allow if Public OR if User is Owner
+    const isOwner = userId && trip.user_id === userId;
+    const isPublic = trip.is_public;
+
+    if (!isPublic && !isOwner) {
+        throw ApiError.forbidden("This trip is private");
+    }
+
+    res.json({ trip, isOwner }); // Return isOwner for frontend logic
+}));
+
+// --- PROTECTED ROUTES (Auth Required) ---
 router.use(verifyToken);
 
 // GET - Fetch all trips for authenticated user
@@ -32,26 +68,6 @@ router.get("/", asyncHandler(async (req: AuthenticatedRequest, res: Response) =>
     res.json({ trips });
 }));
 
-// GET - Fetch a single trip by ID
-router.get("/:id", asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
-    const userId = req.user!.id;
-    const { id } = req.params;
-
-    const { data: trip, error } = await supabase
-        .from("trips")
-        .select("*")
-        .eq("id", id)
-        .eq("user_id", userId)
-        .single();
-
-    if (error) {
-        console.error("Error fetching trip:", error);
-        throw ApiError.notFound("Trip not found");
-    }
-
-    res.json({ trip });
-}));
-
 // POST - Save a new trip
 router.post(
     "/",
@@ -67,6 +83,7 @@ router.post(
                 destination,
                 title,
                 itinerary,
+                is_public: false // Default to private
             })
             .select()
             .single();
@@ -77,6 +94,40 @@ router.post(
         }
 
         res.status(201).json({ trip: data });
+    })
+);
+
+// PUT - Toggle Share Status
+router.put(
+    "/:id/share",
+    asyncHandler(async (req: AuthenticatedRequest, res: Response) => {
+        const userId = req.user!.id;
+        const { id } = req.params;
+        const { is_public } = req.body; // Expect boolean
+
+        if (typeof is_public !== 'boolean') {
+            throw ApiError.badRequest("is_public must be a boolean");
+        }
+
+        // Verify ownership and update
+        const { data, error } = await supabase
+            .from("trips")
+            .update({ is_public })
+            .eq("id", id)
+            .eq("user_id", userId)
+            .select()
+            .single();
+
+        if (error) {
+            console.error("Error updating trip share status:", error);
+            throw ApiError.internal("Failed to update share status");
+        }
+
+        if (!data) {
+            throw ApiError.notFound("Trip not found or permission denied");
+        }
+
+        res.json({ trip: data });
     })
 );
 
