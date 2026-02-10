@@ -43,7 +43,10 @@ router.post(
                     Create a detailed travel itinerary for ${destination}.
                     Preferences: ${preferences || "No specific preferences"}.
 
-                    Return ONLY a JSON object with this exact structure:
+                    Return ONLY a JSON object with this exact structure. 
+                    IMPORTANT: The values in the example below are just placeholders. You must generate REALISTIC and DYNAMIC content based on the destination "${destination}" and the preferences provided. 
+                    Do NOT copy the numbers or text from the example budget or vibe sections; calculate them specific to the location.
+
                     {
                         "tripTitle": "Title of the trip",
                         "destination": "${destination}",
@@ -66,9 +69,9 @@ router.post(
                         "tips": ["Tip 1"],
                         "smart_features": {
                             "budget_estimator": {
-                                "total_estimated": 1200,
-                                "currency": "EUR",
-                                "breakdown": { "flights": 200, "accommodation": 600, "activities": 200, "food": 200 },
+                                "total_estimated": 0,
+                                "currency": "Local Currency Code (e.g. EUR, JPY, USD)",
+                                "breakdown": { "flights": 0, "accommodation": 0, "activities": 0, "food": 0 },
                                 "budget_tips": ["Tip 1", "Tip 2"]
                             },
                             "packing_list": {
@@ -84,8 +87,10 @@ router.post(
                         }
                     }
 
-                    VERY IMPORTANT: For each activity, specify the approximate "lat" (latitude) and "lng" (longitude) for its location so I can show it on a map.
-                    For the budget, estimate realistic costs for a standard traveler.
+                    VERY IMPORTANT: 
+                    1. For each activity, specify the approximate "lat" (latitude) and "lng" (longitude) for its location so I can show it on a map.
+                    2. For "budget_estimator", you MUST calculate a realistic total and breakdown in the local currency of ${destination} or USD/EUR. Do NOT use the placeholder 1200. Estimate costs for flights (from a major hub), mid-range accommodation, and daily expenses.
+                    3. For "local_vibe", provide actual cultural tips and phrases for ${destination}.
                 `;
 
                 const result = await model.generateContent(prompt);
