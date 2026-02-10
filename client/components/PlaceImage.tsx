@@ -9,9 +9,10 @@ interface PlaceImageProps {
     className?: string;
     width?: number;
     height?: number;
+    priority?: boolean; // If true, prefers high-quality stock like Unsplash if Google fails
 }
 
-export function PlaceImage({ query, className, width = 800, height = 600 }: PlaceImageProps) {
+export function PlaceImage({ query, className, width = 800, height = 600, priority = false }: PlaceImageProps) {
     const placesLib = useMapsLibrary("places");
     const [imageSrc, setImageSrc] = useState<string | null>(null);
     const [error, setError] = useState(false);
@@ -42,11 +43,13 @@ export function PlaceImage({ query, className, width = 800, height = 600 }: Plac
     const seed = getSeed(safeQuery);
 
     // Fallback URLs
-    const primaryUrl = `https://pollinations.ai/p/${encodeURIComponent(safeQuery + " cinematic travel photography 4k")}?width=${width}&height=${height}&model=flux&seed=${seed}`;
-    const secondaryUrl = `https://loremflickr.com/${width}/${height}/travel,landmark,tourism,${encodeURIComponent(keywords)}/all?lock=${seed}`;
-    const backupUrl = `https://placehold.co/${width}x${height}/EEE/31343C?text=${encodeURIComponent(safeQuery.substring(0, 30))}`;
+    // We append "cinematic travel photography 4k" to ensure high quality style
+    const pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(safeQuery + " cinematic travel photography 4k")}?width=${width}&height=${height}&model=flux&seed=${seed}`;
 
-    const [attempt, setAttempt] = useState(0); // 0 = Google, 1 = Pollinations, 2 = LoremFlickr, 3 = Placeholder
+    // 0 = Google, 1 = Unsplash Proxy, 2 = Pollinations
+    // If priority is true and we want to enforce Unsplash for "discovered" feel we could even skip Google? 
+    // But user said: "Priorité Google Places... Si vide -> Unsplash"
+    const [attempt, setAttempt] = useState(0);
 
     // Effect to try Google Places API first
     useEffect(() => {
@@ -96,17 +99,43 @@ export function PlaceImage({ query, className, width = 800, height = 600 }: Plac
 
     // Effect to handle fallbacks when attempt changes
     useEffect(() => {
+        let isMounted = true;
+
+        const fetchUnsplash = async () => {
+            try {
+                // Remove specific activity verbs for better stock results
+                const cleanQuery = safeQuery
+                    .replace(/Arrive at|Transfer to|Check into|Visit|Explore|Lunch at|Dinner at|Walk around/gi, "")
+                    .replace(/[^\w\s]/g, "")
+                    .trim();
+
+                const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+                const res = await fetch(`${apiUrl}/api/images/unsplash?query=${encodeURIComponent(cleanQuery)}`);
+
+                if (!res.ok) throw new Error("Unsplash failed");
+
+                const data = await res.json();
+                if (isMounted) {
+                    setImageSrc(data.url);
+                    setLoading(false);
+                }
+            } catch (err) {
+                console.warn("Unsplash fallback failed, moving to Pollinations");
+                if (isMounted) setAttempt(2);
+            }
+        };
+
         if (attempt === 1) {
-            setImageSrc(primaryUrl);
-            setLoading(false);
+            fetchUnsplash();
         } else if (attempt === 2) {
-            setImageSrc(secondaryUrl);
-        } else if (attempt === 3) {
-            setImageSrc(backupUrl);
-        } else if (attempt > 3) {
+            setImageSrc(pollinationsUrl);
+            setLoading(false);
+        } else if (attempt > 2) {
             setError(true);
         }
-    }, [attempt, primaryUrl, secondaryUrl, backupUrl]);
+
+        return () => { isMounted = false; };
+    }, [attempt, pollinationsUrl, safeQuery]);
 
 
     // Handle image load error (for the <img> tag)

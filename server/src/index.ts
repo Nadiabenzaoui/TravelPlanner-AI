@@ -6,6 +6,7 @@ import itineraryRoutes from "./routes/itinerary.js";
 import tripsRoutes from "./routes/trips.js";
 import profileRoutes from "./routes/profile.js";
 import destinationsRouter from "./routes/destinations.js";
+import imagesRouter from "./routes/images.js";
 import {
     generalLimiter,
     requestLogger,
@@ -37,6 +38,7 @@ app.use("/api/itinerary", itineraryRoutes);
 app.use("/api/trips", tripsRoutes);
 app.use("/api/profile", profileRoutes);
 app.use("/api/destinations", destinationsRouter);
+app.use("/api/images", imagesRouter);
 
 // Error handling
 app.use(notFoundHandler);
