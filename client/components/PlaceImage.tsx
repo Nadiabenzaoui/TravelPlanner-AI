@@ -47,9 +47,8 @@ export function PlaceImage({ query, className, width = 800, height = 600, priori
     const pollinationsUrl = `https://pollinations.ai/p/${encodeURIComponent(safeQuery + " cinematic travel photography 4k")}?width=${width}&height=${height}&model=flux&seed=${seed}`;
 
     // 0 = Google, 1 = Unsplash Proxy, 2 = Pollinations
-    // If priority is true and we want to enforce Unsplash for "discovered" feel we could even skip Google? 
-    // But user said: "Priorité Google Places... Si vide -> Unsplash"
-    const [attempt, setAttempt] = useState(0);
+    // If priority is true, we skip Google (0) and start with Unsplash (1)
+    const [attempt, setAttempt] = useState(priority ? 1 : 0);
 
     // Effect to try Google Places API first
     useEffect(() => {

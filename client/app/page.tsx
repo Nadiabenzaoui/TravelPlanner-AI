@@ -241,7 +241,7 @@ export default function Home() {
                 className="group relative h-[500px] rounded-3xl overflow-hidden cursor-pointer"
                 onClick={() => router.push(`/destinations/${dest.name.split(',')[0]}`)}
               >
-                <PlaceImage query={dest.query} width={600} height={800} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                <PlaceImage query={dest.query} width={600} height={800} priority={true} className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-60 group-hover:opacity-80 transition-opacity" />
                 <div className="absolute bottom-0 left-0 p-8 text-white">
                   <p className="text-xs font-bold uppercase tracking-widest mb-2 opacity-80">Discover</p>
