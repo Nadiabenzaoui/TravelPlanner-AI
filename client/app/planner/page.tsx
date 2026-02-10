@@ -374,7 +374,7 @@ function PlannerContent() {
                                                     {/* Thumbnail Image */}
                                                     <div className="hidden md:block w-24 h-24 shrink-0 rounded-xl overflow-hidden shadow-sm">
                                                         <PlaceImage
-                                                            query={`${activity.activity} in ${activity.location}`}
+                                                            query={activity.location}
                                                             className="w-full h-full"
                                                         />
                                                     </div>
